@@ -14,7 +14,6 @@
 > Este devShell cuenta con los siguientes items:
 > - GCC, Valgrind y GNU Make como herramientas de compilacion y desarrollo
 > - Distribucion de Neovim configurada con CCLS como LSP para C/C++
-> Para acceder a la devShell del proyecto basta con ejecutar el siguiente comando
-> `nix develop` o `nix develop path:/root/path/of/repo`
+> - Para acceder a la devShell del proyecto basta con ejecutar el siguiente comando: `nix develop` o `nix develop path:/root/path/of/repo`
 
 Para compilar el proyecto se debe contar con GCC y GNU Make instalados en la maquina, para compilar basta con ejecutar el siguiente comando: `make` o `make compile`, esto creara una carpeta build donde se encontraran dos ejecutables: `p1.o` y `p3.o` que corresponden a los solicitados por el ejercicio
