@@ -15,7 +15,8 @@
 // bitmasks
 #define BASE_FLAG_MASK 0x01
 #define HELP_FLAG_MASK (BASE_FLAG_MASK << 1)
-#define CUSTOM_DAEMON_FLAG_MASK (BASE_FLAG_MASK << 2)
+#define CUSTOM_SHARED_MEMORY_KEY_FLAG_MASK (BASE_FLAG_MASK << 2)
+#define CUSTOM_SEMAPHORE_KEY_FLAG_MASK (BASE_FLAG_MASK << 2)
 
 // log severities
 #define DEBUG_LOGSEVERITY 0
@@ -24,21 +25,28 @@
 
 // defaults
 #define LOGSEVERITY_DEFAULT 3
-#define DAEMON_PREFIX_DEFAULT "p3"
+#define SHARED_MEMORY_KEY_DEFAULT "p3"
+#define SEMAPHORE_KEY_DEFAULT "/p3"
 
 // technology-specific defaults
 #define IPC_SHARED_MEMORY_PROYECT_ID 'a'
 #define IPC_SHARED_MEMORY_SIZE 10
 
-#define SEMAPHORE_IN_PATH "/semaphore_in"
-#define SEMAPHORE_OUT_PATH "/semaphore_out"
+#define SHARED_MEMORY_KEY_FULL_FLAG "--shared-mem-key="
+#define SHARED_MEMORY_KEY_ALIAS_FLAG "-m="
+#define HELP_FULL_FLAG "--help"
+#define HELP_ALIAS_FLAG "-h"
+#define SEMAPHORE_KEY_FULL_FLAG "--semaphore-key="
+#define SEMAPHORE_KEY_ALIAS_FLAG "-s="
+#define LOG_SEVERITY_FULL_FLAG "--log="
+#define LOG_SEVERITY_ALIAS_FLAG "-l="
 
 // application state and arguments
 typedef struct Arguments {
   int flags;
   char *executeCmd;
-  char *daemonKeyPrefix;
   char *daemonSharedMemoryKey;
+  char *daemonSemaphoreKey;
 } Arguments;
 
 typedef struct ApplicationState {
@@ -66,6 +74,7 @@ void formattedLog(char *origin, int severity, char *message) {
 
 void formattedLogParametized(char *origin, int severity, char *format,
                              uintptr_t parameter) {
+	// this is in static scope so its lifetime is linked to that of the app, it is not deallocated because C handles that
   static char processedStr[64];
   snprintf(processedStr, 64, format, parameter);
   formattedLog(origin, severity, processedStr);
@@ -86,10 +95,6 @@ void cleanup() {
   if (applicationState.arguments.daemonSharedMemoryKey != NULL) {
     free(applicationState.arguments.daemonSharedMemoryKey);
     applicationState.arguments.daemonSharedMemoryKey = NULL;
-  }
-  if (applicationState.arguments.daemonKeyPrefix != NULL) {
-    free(applicationState.arguments.daemonKeyPrefix);
-    applicationState.arguments.daemonKeyPrefix = NULL;
   }
   if (applicationState.pipeFileDescriptors[0] != 0) {
     close(applicationState.pipeFileDescriptors[0]);
@@ -127,15 +132,22 @@ void handleErrorGracefullyAndExit(char *origin, char *errorMessage) {
 
 // argument defaults and validation
 Arguments validateArgv(Arguments args) {
-  if (strlen(args.executeCmd) == 0) {
+	int isEmptyBinaryPath = strlen(args.executeCmd) == 0;
+  if (isEmptyBinaryPath) {
     args.flags |= HELP_FLAG_MASK;
   }
-  if ((args.flags & CUSTOM_DAEMON_FLAG_MASK) == 0)
-    memcpy(args.daemonKeyPrefix, DAEMON_PREFIX_DEFAULT,
-           strlen(DAEMON_PREFIX_DEFAULT) + sizeof(char));
-  memcpy(args.daemonSharedMemoryKey, args.daemonKeyPrefix,
-         strlen(args.daemonKeyPrefix) + sizeof(char));
+
+	int isUsingCustomSharedMemoryKey = (args.flags & CUSTOM_SHARED_MEMORY_KEY_FLAG_MASK) == 0;
+	int isUsingCustomSemaphoreKey = (args.flags & CUSTOM_SEMAPHORE_KEY_FLAG_MASK) == 0;
+  if (!isUsingCustomSharedMemoryKey) {
+		args.daemonSharedMemoryKey = SHARED_MEMORY_KEY_DEFAULT;
+	}
+	if (!isUsingCustomSemaphoreKey) {
+		args.daemonSemaphoreKey = SEMAPHORE_KEY_DEFAULT;
+	}
+
   strcat(args.daemonSharedMemoryKey, "sharedmemory");
+  strcat(args.daemonSemaphoreKey, "semaphore");
   return args;
 }
 
@@ -149,46 +161,59 @@ Arguments extractArgumentsFromArgv(int argc, char **argv) {
   args.flags = 0;
   args.executeCmd = "";
   args.daemonSharedMemoryKey = malloc(sizeof(char[64]));
-  args.daemonKeyPrefix = malloc(sizeof(char[64]));
+  args.daemonSemaphoreKey = malloc(sizeof(char[64]));
 
-  if (args.daemonSharedMemoryKey == NULL || args.daemonKeyPrefix == NULL) {
+  if (args.daemonSharedMemoryKey == NULL) {
     handleErrorGracefullyAndExit("extractArgumentsFromArgv",
                                  "Could not allocate args variables");
   }
 
   for (int idx = 1; idx < argc; idx += 1) {
-		int isHelpFlag = strcmp(argv[idx], "-h") == 0 || strcmp(argv[idx], "--help") == 0;
+		int isHelpFlag = strcmp(argv[idx], HELP_ALIAS_FLAG) == 0 || strcmp(argv[idx], HELP_FULL_FLAG) == 0;
 
-		int isLogFlagAlias = strncmp(argv[idx], "-l=", strlen("-l=")) == 0;
-		int isLogFlagFull = strncmp(argv[idx], "--log=", strlen("--log=")) == 0;
+		int isLogFlagAlias = strncmp(argv[idx], LOG_SEVERITY_ALIAS_FLAG, strlen(LOG_SEVERITY_ALIAS_FLAG)) == 0;
+		int isLogFlagFull = strncmp(argv[idx], LOG_SEVERITY_FULL_FLAG, strlen(LOG_SEVERITY_FULL_FLAG)) == 0;
 
-		int isKeyFlagFull = strncmp(argv[idx], "--key=", strlen("--key=")) == 0;
-		int isKeyFlagAlias = strncmp(argv[idx], "-k=", strlen("-k=")) == 0;
+		int isSharedMemoryKeyFlagFull = strncmp(argv[idx], SHARED_MEMORY_KEY_FULL_FLAG, strlen(SHARED_MEMORY_KEY_FULL_FLAG)) == 0;
+		int isSharedMemoryKeyFlagAlias = strncmp(argv[idx], SHARED_MEMORY_KEY_ALIAS_FLAG, strlen(SHARED_MEMORY_KEY_ALIAS_FLAG)) == 0;
+
+		int isSemaphoreKeyFlagFull = strncmp(argv[idx], SEMAPHORE_KEY_FULL_FLAG, strlen(SEMAPHORE_KEY_FULL_FLAG)) == 0;
+		int isSemaphoreKeyFlagAlias = strncmp(argv[idx], SEMAPHORE_KEY_ALIAS_FLAG, strlen(SEMAPHORE_KEY_ALIAS_FLAG)) == 0;
 
     if (isHelpFlag) {
       args.flags |= HELP_FLAG_MASK;
     } else if (isLogFlagAlias) {
       char value[64];
-			int baseFlagLength = strlen("-l=");
-			int argumentLength = strlen(argv[idx]);
-      memcpy(value, &argv[idx][baseFlagLength], argumentLength - baseFlagLength);
+			int baseFlagLength = strlen(LOG_SEVERITY_ALIAS_FLAG);
+
+			strcpy(value, argv[idx] + sizeof(char) * baseFlagLength);
       applicationState.minimumLogSeverity = atoi(value);
     } else if (isLogFlagFull) {
       char value[64];
-			int baseFlagLength = strlen("--log=");
-			int argumentLength = strlen(argv[idx]);
-      memcpy(value, &argv[idx][baseFlagLength], argumentLength - baseFlagLength);
+			int baseFlagLength = strlen(LOG_SEVERITY_FULL_FLAG);
+
+			strcpy(value, argv[idx] + sizeof(char) * baseFlagLength);
       applicationState.minimumLogSeverity = atoi(value);
-    } else if (isKeyFlagAlias) {
-			int baseFlagLength = strlen("-k=");
-			int argumentLength = strlen(argv[idx]);
-      memcpy(args.daemonKeyPrefix, &argv[idx][baseFlagLength], argumentLength - baseFlagLength + sizeof(char));
-      args.flags |= CUSTOM_DAEMON_FLAG_MASK;
-    } else if (isKeyFlagFull) {
-			int baseFlagLength = strlen("--key=");
-			int argumentLength = strlen(argv[idx]);
-      memcpy(args.daemonKeyPrefix, &argv[idx][baseFlagLength], argumentLength - baseFlagLength + sizeof(char));
-      args.flags |= CUSTOM_DAEMON_FLAG_MASK;
+    } else if (isSharedMemoryKeyFlagAlias) {
+			int baseFlagLength = strlen(SHARED_MEMORY_KEY_ALIAS_FLAG);
+
+			strcpy(args.daemonSharedMemoryKey, argv[idx] + sizeof(char) * baseFlagLength);
+      args.flags |= CUSTOM_SHARED_MEMORY_KEY_FLAG_MASK;
+    } else if (isSharedMemoryKeyFlagFull) {
+			int baseFlagLength = strlen(SHARED_MEMORY_KEY_FULL_FLAG);
+
+			strcpy(args.daemonSharedMemoryKey, argv[idx] + sizeof(char) * baseFlagLength);
+      args.flags |= CUSTOM_SHARED_MEMORY_KEY_FLAG_MASK;
+    } else if (isSemaphoreKeyFlagFull) {
+			int baseFlagLength = strlen(SEMAPHORE_KEY_FULL_FLAG);
+
+			strcpy(args.daemonSemaphoreKey, argv[idx] + sizeof(char) * baseFlagLength);
+      args.flags |= CUSTOM_SEMAPHORE_KEY_FLAG_MASK;
+    } else if (isSemaphoreKeyFlagAlias) {
+			int baseFlagLength = strlen(SEMAPHORE_KEY_ALIAS_FLAG);
+
+			strcpy(args.daemonSemaphoreKey, argv[idx] + sizeof(char) * baseFlagLength);
+      args.flags |= CUSTOM_SEMAPHORE_KEY_FLAG_MASK;
     } else {
       args.executeCmd = argv[idx];
     }
@@ -301,13 +326,16 @@ void connectDaemonAndStdoutPassthrough(char *daemonSharedMemoryKey) {
                                  "Failed to map shared memory");
   }
 
-  applicationState.inputSemaphore =
-      sem_open(SEMAPHORE_IN_PATH, O_CREAT, 0644, 0);
-  applicationState.outputSemaphore =
-      sem_open(SEMAPHORE_OUT_PATH, O_CREAT, 0644, 0);
+	char *semaphoreInPath = applicationState.arguments.daemonSemaphoreKey;
+	char *semaphoreOutPath = applicationState.arguments.daemonSemaphoreKey;
 
-  strcpy(applicationState.sharedMemory->buffer,
-         applicationState.arguments.executeCmd);
+	strcat(semaphoreInPath, "in");
+	strcat(semaphoreOutPath, "out");
+
+  applicationState.inputSemaphore = sem_open(semaphoreInPath, O_CREAT, 0644, 0);
+  applicationState.outputSemaphore = sem_open(semaphoreOutPath, O_CREAT, 0644, 0);
+
+  strcpy(applicationState.sharedMemory->buffer, applicationState.arguments.executeCmd);
 
   if (sem_post(applicationState.inputSemaphore) == -1) {
     handleErrorGracefullyAndExit("connectDaemonAndStdoutPassthrough",
@@ -388,11 +416,17 @@ int main(int argc, char **argv) {
                           "Executing with minimum log severity: %d",
                           applicationState.minimumLogSeverity);
 
-  if ((applicationState.arguments.flags & CUSTOM_DAEMON_FLAG_MASK) > 0) {
+  if ((applicationState.arguments.flags & CUSTOM_SHARED_MEMORY_KEY_FLAG_MASK) > 0) {
     formattedLogParametized(
         "main", DEBUG_LOGSEVERITY,
-        "Executing with custom daemon key prefix: %s",
-        (uintptr_t)applicationState.arguments.daemonKeyPrefix);
+        "Executing with custom shared memory key prefix: %s",
+        (uintptr_t)applicationState.arguments.daemonSharedMemoryKey);
+  }
+  if ((applicationState.arguments.flags & CUSTOM_SEMAPHORE_KEY_FLAG_MASK) > 0) {
+    formattedLogParametized(
+        "main", DEBUG_LOGSEVERITY,
+        "Executing with custom semaphore key prefix: %s",
+        (uintptr_t)applicationState.arguments.daemonSemaphoreKey);
   }
 
   if ((applicationState.arguments.flags & HELP_FLAG_MASK) > 0) {
