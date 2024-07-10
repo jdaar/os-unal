@@ -10,7 +10,7 @@
 
 ## Instrucciones de uso
 
-> Se recomienta usar NixOS como el sistema operativo del entorno de ejecucion o que este cuente con el gestor de paquetes Nix, esto debido a que el repositorio cuenta con una devShell de Nix el cual facilita y garantiza la ejecucion del programa ya que incluye todas las dependencias de compilacion y desarrollo
+> Se recomienta usar NixOS como el sistema operativo del entorno de ejecucion o que este cuente con el gestor de paquetes Nix, esto debido a que el repositorio cuenta con una devShell de Nix la cual facilita y garantiza la ejecucion del programa ya que incluye todas las dependencias de compilacion y desarrollo
 > Este devShell cuenta con los siguientes items:
 > - GCC, Valgrind y GNU Make como herramientas de compilacion y desarrollo
 > - Distribucion de Neovim configurada con CCLS como LSP para C/C++
