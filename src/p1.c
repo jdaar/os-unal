@@ -157,25 +157,37 @@ Arguments extractArgumentsFromArgv(int argc, char **argv) {
   }
 
   for (int idx = 1; idx < argc; idx += 1) {
-    if (strcmp(argv[idx], "-h") == 0 || strcmp(argv[idx], "--help") == 0) {
+		int isHelpFlag = strcmp(argv[idx], "-h") == 0 || strcmp(argv[idx], "--help") == 0;
+
+		int isLogFlagAlias = strncmp(argv[idx], "-l=", strlen("-l=")) == 0;
+		int isLogFlagFull = strncmp(argv[idx], "--log=", strlen("--log=")) == 0;
+
+		int isKeyFlagFull = strncmp(argv[idx], "--key=", strlen("--key=")) == 0;
+		int isKeyFlagAlias = strncmp(argv[idx], "-k=", strlen("-k=")) == 0;
+
+    if (isHelpFlag) {
       args.flags |= HELP_FLAG_MASK;
-    } else if (strncmp(argv[idx], "-l=", strlen("-l=")) == 0) {
+    } else if (isLogFlagAlias) {
       char value[64];
-      memcpy(value, &argv[idx][strlen("-l=")],
-             strlen(argv[idx]) - strlen("-l="));
+			int baseFlagLength = strlen("-l=");
+			int argumentLength = strlen(argv[idx]);
+      memcpy(value, &argv[idx][baseFlagLength], argumentLength - baseFlagLength);
       applicationState.minimumLogSeverity = atoi(value);
-    } else if (strncmp(argv[idx], "--log=", strlen("--log=")) == 0) {
+    } else if (isLogFlagFull) {
       char value[64];
-      memcpy(value, &argv[idx][strlen("--log=")],
-             strlen(argv[idx]) - strlen("--log="));
+			int baseFlagLength = strlen("--log=");
+			int argumentLength = strlen(argv[idx]);
+      memcpy(value, &argv[idx][baseFlagLength], argumentLength - baseFlagLength);
       applicationState.minimumLogSeverity = atoi(value);
-    } else if (strncmp(argv[idx], "-k=", strlen("-k=")) == 0) {
-      memcpy(args.daemonKeyPrefix, &argv[idx][strlen("-k=")],
-             strlen(argv[idx]) - strlen("-k=") + sizeof(char));
+    } else if (isKeyFlagAlias) {
+			int baseFlagLength = strlen("-k=");
+			int argumentLength = strlen(argv[idx]);
+      memcpy(args.daemonKeyPrefix, &argv[idx][baseFlagLength], argumentLength - baseFlagLength + sizeof(char));
       args.flags |= CUSTOM_DAEMON_FLAG_MASK;
-    } else if (strncmp(argv[idx], "--key=", strlen("--key=")) == 0) {
-      memcpy(args.daemonKeyPrefix, &argv[idx][strlen("--key=")],
-             strlen(argv[idx]) - strlen("--key=") + sizeof(char));
+    } else if (isKeyFlagFull) {
+			int baseFlagLength = strlen("--key=");
+			int argumentLength = strlen(argv[idx]);
+      memcpy(args.daemonKeyPrefix, &argv[idx][baseFlagLength], argumentLength - baseFlagLength + sizeof(char));
       args.flags |= CUSTOM_DAEMON_FLAG_MASK;
     } else {
       args.executeCmd = argv[idx];
