@@ -1,5 +1,7 @@
 # Parcial #1 de la clase de Sistemas operativos UNAL
 
+> En caso de que no se desee compilar el programa, se encuentran los binarios compilados en la pagina de [releases](https://github.com/jdaar/os-unal/releases/tag/v1.0.0)
+
 ## Roadmap (cosas adicionales a la funcionalidad solicitada por el problema que me gustaria añadir)
 - [ ] Implementar RAII o alguna tecnica similar para la gestion de recursos
 - [ ] Refactorizar el p3 para darle una estructura mas generica y mejor segregacion de responsabilidades
